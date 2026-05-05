@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -67,20 +67,30 @@
             });
         }
 
-        // --- 新增資料 ---
+// --- 新增或更新資料 ---
         window.addWeight = async function() {
             const user = auth.currentUser;
             const date = document.getElementById('dateInput').value;
             const weight = parseFloat(document.getElementById('weightInput').value);
 
             if (user && date && !isNaN(weight)) {
-                await addDoc(collection(db, "weights"), {
-                    uid: user.uid, // 存入用戶 ID
-                    date,
-                    weight,
-                    createdAt: new Date()
-                });
-                document.getElementById('weightInput').value = "";
+                try {
+                    // 關鍵修改：使用「用戶 ID + 日期」作為文件的專屬 ID
+                    const docId = `${user.uid}_${date}`;
+                    const docRef = doc(db, "weights", docId);
+
+                    // 使用 setDoc 搭配 merge: true，如果存在就更新，不存在就新增
+                    await setDoc(docRef, {
+                        uid: user.uid,
+                        date: date,
+                        weight: weight,
+                        updatedAt: new Date()
+                    }, { merge: true });
+
+                    document.getElementById('weightInput').value = "";
+                } catch (error) {
+                    console.error("儲存失敗：", error);
+                }
             }
         };
 
