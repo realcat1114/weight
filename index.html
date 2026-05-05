@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>雲端體重追蹤 APP</title>
+    <title>專業版體重追蹤 APP</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        // 這裡就是你提供的金鑰
         const firebaseConfig = {
             apiKey: "AIzaSyDqjGj7I-ZqDQfeayB-MjdG3XVJgoUOInI",
             authDomain: "weight-byrealcat.firebaseapp.com",
@@ -20,40 +20,67 @@
             measurementId: "G-E6V3XJQXXW"
         };
 
-        // 初始化 Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const weightCol = collection(db, "weights");
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
 
-        // 圖表變數
         let chartInstance = null;
+        let unsubscribe = null; // 用來切換用戶時清除監聽
 
-        // 設定今天的日期為預設值
-        document.getElementById('dateInput').valueAsDate = new Date();
+        // --- 登入邏輯 ---
+        window.login = () => signInWithPopup(auth, provider);
+        window.logout = () => signOut(auth);
 
-        // 監聽資料庫變化 (即時更新)
-        const q = query(weightCol, orderBy("date", "asc"));
-        onSnapshot(q, (snapshot) => {
-            const weights = [];
-            snapshot.forEach((doc) => weights.push(doc.data()));
-            updateChart(weights);
+        // 監聽登入狀態改變
+        onAuthStateChanged(auth, (user) => {
+            const loginSection = document.getElementById('loginSection');
+            const appSection = document.getElementById('appSection');
+            const userNameDisplay = document.getElementById('userName');
+
+            if (user) {
+                // 已登入
+                loginSection.style.display = 'none';
+                appSection.style.display = 'block';
+                userNameDisplay.innerText = `你好，${user.displayName}`;
+                startDataSync(user.uid);
+            } else {
+                // 已登出
+                loginSection.style.display = 'block';
+                appSection.style.display = 'none';
+                if (unsubscribe) unsubscribe();
+            }
         });
 
-        // 新增資料到雲端
+        // --- 資料同步 (只撈取當前用戶的資料) ---
+        function startDataSync(uid) {
+            const q = query(
+                collection(db, "weights"), 
+                where("uid", "==", uid), // 關鍵：只抓自己的
+                orderBy("date", "asc")
+            );
+
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                const weights = [];
+                snapshot.forEach((doc) => weights.push(doc.data()));
+                updateChart(weights);
+            });
+        }
+
+        // --- 新增資料 ---
         window.addWeight = async function() {
+            const user = auth.currentUser;
             const date = document.getElementById('dateInput').value;
             const weight = parseFloat(document.getElementById('weightInput').value);
 
-            if (!date || isNaN(weight)) {
-                alert("請輸入完整的日期與體重！");
-                return;
-            }
-
-            try {
-                await addDoc(weightCol, { date, weight, createdAt: new Date() });
-                document.getElementById('weightInput').value = ""; // 清空輸入框
-            } catch (e) {
-                console.error("增加紀錄出錯: ", e);
+            if (user && date && !isNaN(weight)) {
+                await addDoc(collection(db, "weights"), {
+                    uid: user.uid, // 存入用戶 ID
+                    date,
+                    weight,
+                    createdAt: new Date()
+                });
+                document.getElementById('weightInput').value = "";
             }
         };
 
@@ -61,20 +88,16 @@
             const labels = dataList.map(d => d.date);
             const data = dataList.map(d => d.weight);
             const ctx = document.getElementById('weightChart').getContext('2d');
-            
-            if (chartInstance) { chartInstance.destroy(); }
-
+            if (chartInstance) chartInstance.destroy();
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '雲端同步體重 (kg)',
+                        label: '個人體重趨勢',
                         data: data,
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                        borderWidth: 2,
-                        tension: 0.3,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
                         fill: true
                     }]
                 }
@@ -82,31 +105,41 @@
         }
     </script>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f0f4f8; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        h1 { color: #1e293b; text-align: center; }
-        .input-group { display: flex; gap: 10px; }
-        input { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
-        button { padding: 10px 20px; background-color: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #2563eb; }
-        .status { text-align: center; font-size: 0.8rem; color: #64748b; margin-top: 10px; }
+        body { font-family: -apple-system, sans-serif; background: #f8fafc; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 100%; max-width: 500px; margin-bottom: 20px; }
+        button { cursor: pointer; border: none; border-radius: 8px; font-weight: 600; transition: 0.3s; }
+        .btn-primary { background: #4f46e5; color: white; padding: 12px 24px; width: 100%; font-size: 1rem; }
+        .btn-add { background: #10b981; color: white; padding: 10px; }
+        .btn-logout { background: #ef4444; color: white; padding: 5px 10px; font-size: 0.8rem; margin-top: 10px; }
+        input { padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; }
+        #loginSection { text-align: center; margin-top: 100px; }
     </style>
 </head>
 <body>
 
-    <h1>⚖️ 雲端體重追蹤器</h1>
-
-    <div class="card">
-        <div class="input-group">
-            <input type="date" id="dateInput">
-            <input type="number" id="weightInput" placeholder="kg" step="0.1">
-            <button onclick="addWeight()">新增</button>
-        </div>
-        <p class="status">✨ 資料將即時同步至雲端資料庫</p>
+    <div id="loginSection" class="card">
+        <h2>⚖️ 體重追蹤 APP</h2>
+        <p>請先登入以同步您的私密數據</p>
+        <button class="btn-primary" onclick="login()">使用 Google 帳號登入</button>
     </div>
 
-    <div class="card">
-        <canvas id="weightChart"></canvas>
+    <div id="appSection" style="display:none; width: 100%; max-width: 500px;">
+        <div class="card">
+            <div style="display:flex; justify-content: space-between; align-items: center;">
+                <span id="userName" style="font-weight:bold;"></span>
+                <button class="btn-logout" onclick="logout()">登出</button>
+            </div>
+            <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
+            <div style="display:flex; gap: 10px;">
+                <input type="date" id="dateInput">
+                <input type="number" id="weightInput" placeholder="kg" style="width: 80px;">
+                <button class="btn-add" onclick="addWeight()">記錄</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <canvas id="weightChart"></canvas>
+        </div>
     </div>
 
 </body>
