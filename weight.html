@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的體重追蹤 APP</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { color: #333; text-align: center; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #45a049; }
+    </style>
+</head>
+<body>
+
+    <h1>⚖️ 體重追蹤器</h1>
+
+    <div class="card">
+        <div class="input-group">
+            <input type="date" id="dateInput" required>
+            <input type="number" id="weightInput" placeholder="輸入體重 (kg)" step="0.1" required>
+            <button onclick="addWeight()">新增紀錄</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <canvas id="weightChart"></canvas>
+    </div>
+
+    <script>
+        // 設定今天的日期為預設值
+        document.getElementById('dateInput').valueAsDate = new Date();
+        
+        let weightData = JSON.parse(localStorage.getItem('weightData')) || [];
+        let chartInstance = null;
+
+        function updateChart() {
+            // 依照日期排序
+            weightData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            const labels = weightData.map(d => d.date);
+            const data = weightData.map(d => d.weight);
+
+            const ctx = document.getElementById('weightChart').getContext('2d');
+            
+            if (chartInstance) { chartInstance.destroy(); } // 重新繪製前先清除舊圖
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '體重 (kg)',
+                        data: data,
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+
+        function addWeight() {
+            const date = document.getElementById('dateInput').value;
+            const weight = parseFloat(document.getElementById('weightInput').value);
+
+            if (!date || isNaN(weight)) {
+                alert("請輸入完整的日期與體重！");
+                return;
+            }
+
+            // 檢查是否同一天已經有紀錄，有的話就更新
+            const existingIndex = weightData.findIndex(d => d.date === date);
+            if (existingIndex >= 0) {
+                weightData[existingIndex].weight = weight;
+            } else {
+                weightData.push({ date, weight });
+            }
+
+            // 存入瀏覽器並更新圖表
+            localStorage.setItem('weightData', JSON.stringify(weightData));
+            updateChart();
+        }
+
+        // 網頁載入時初始化圖表
+        updateChart();
+    </script>
+</body>
+</html>
