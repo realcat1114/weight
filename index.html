@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, doc, setDoc, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -52,25 +52,20 @@
             }
         });
 
-            window.addWeight = async function() {
-            const user = auth.currentUser;
-            const date = document.getElementById('dateInput').value;
-            const weight = parseFloat(document.getElementById('weightInput').value);
+        // --- 資料同步 (只撈取當前用戶的資料) ---
+        function startDataSync(uid) {
+            const q = query(
+                collection(db, "weights"), 
+                where("uid", "==", uid), // 關鍵：只抓自己的
+                orderBy("date", "asc")
+            );
 
-            if (user && date && !isNaN(weight)) {
-                const docId = `${user.uid}_${date}`;
-                const docRef = doc(db, "weights", docId);
-
-                await setDoc(docRef, {
-                    uid: user.uid,
-                    date: date,
-                    weight: weight,
-                    createdAt: new Date()
-                });
-                
-                document.getElementById('weightInput').value = "";
-            }
-        };
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                const weights = [];
+                snapshot.forEach((doc) => weights.push(doc.data()));
+                updateChart(weights);
+            });
+        }
 
 // --- 新增或更新資料 ---
         window.addWeight = async function() {
